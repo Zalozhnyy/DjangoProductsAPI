@@ -12,6 +12,23 @@ API_BASEURL = "http://localhost:8000"
 
 ROOT_ID = "069cb8d7-bbdd-47d3-ad8f-82ef4c269df1"
 
+CUSTOM_BATCH = [
+    {
+        "items": [
+            {
+                "type": "OFFER",
+                "name": 'Goldstar 65" LED UHD LOL Very Smart',
+                "id": "73bc3b36-02d1-4245-ab35-3106c9ee1c65",
+                "parentId": "069cb8d7-bbdd-47d3-ad8f-82ef4c269df1",
+                "price": 69999,
+
+            }
+        ],
+        "updateDate": "2022-02-01T12:00:00.000Z"
+    }
+
+]
+
 IMPORT_BATCHES = [
     {
         "items": [
@@ -214,6 +231,9 @@ def print_diff(expected, response):
 
 def test_import():
     for index, batch in enumerate(IMPORT_BATCHES):
+    # for index, batch in enumerate(CUSTOM_BATCH):
+        # if index != 2:
+        #     continue
         print(f"Importing batch {index}")
         status, _ = request("/imports", method="POST", data=batch)
 
@@ -279,7 +299,10 @@ def test_all():
 
 def main():
     global API_BASEURL
-    test_name = "nodes"
+    test_name = [
+        "import",
+        'nodes',
+    ]
 
     for arg in sys.argv[1:]:
         if re.match(r"^https?://", arg):
@@ -293,11 +316,12 @@ def main():
     if test_name is None:
         test_all()
     else:
-        test_func = globals().get(f"test_{test_name}")
-        if not test_func:
-            print(f"Unknown test: {test_name}")
-            sys.exit(1)
-        test_func()
+        for tn in test_name:
+            test_func = globals().get(f"test_{tn}")
+            if not test_func:
+                print(f"Unknown test: {tn}")
+                sys.exit(1)
+            test_func()
 
 
 if __name__ == "__main__":

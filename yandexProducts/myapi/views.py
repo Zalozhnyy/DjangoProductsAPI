@@ -2,7 +2,6 @@ import uuid
 
 from django.views.decorators.http import require_http_methods
 
-from django.shortcuts import render
 from rest_framework.response import Response
 from django.http import JsonResponse, HttpResponse
 from rest_framework.parsers import JSONParser
@@ -10,27 +9,9 @@ from django.views.decorators.csrf import csrf_exempt
 
 from rest_framework import status
 
-from .serializers import CategorySerializer, ProductSerializer, NodesSerializer, RecursiveModelSerializer
-from .models import ItemTypes, Category, ProductItem, RecursiveModel
+from .serializers import ItemSerializer
+from .models import ItemModel
 from .utility import query_debugger
-
-
-def import_handler(_model, serializer):
-    if serializer.is_valid():
-        instance = _model.objects.filter(pk=serializer.validated_data['id'])
-
-        if instance:  # object exist in database
-            serializer.update(instance[0], serializer.validated_data)
-        else:
-            serializer.save()
-    else:
-        return JsonResponse(
-            {
-                "code": status.HTTP_400_BAD_REQUEST,
-                "message": "Validation Failed"
-            },
-            status=status.HTTP_400_BAD_REQUEST
-        )
 
 
 @csrf_exempt
@@ -39,25 +20,45 @@ def import_view(request):
     input_data = JSONParser().parse(request)
 
     items = input_data['items']
-    categories, products = [], []
+    items = sorted(items, key=lambda x: x['type'])
 
     for item in items:
         item['date'] = input_data['updateDate']
 
-        if ItemTypes.from_str(item['type']) == ItemTypes.CATEGORY:
-            categories.append((Category, CategorySerializer(data=item)))
+        if item['type'] == "CATEGORY":
+            item['price'] = None
 
-        elif ItemTypes.from_str(item['type']) == ItemTypes.OFFER:
-            products.append((ProductItem, ProductSerializer(data=item)))
+        try:
+            instance = ItemModel.objects.get(pk=item['id'])
+            serializer = ItemSerializer(data=item, instance=instance)
+        except ItemModel.DoesNotExist:
+            serializer = ItemSerializer(data=item)
+
+        if serializer.is_valid(raise_exception=True):
+
+            if serializer.validated_data['parentId'] is not None:
+                q = serializer.validated_data['parentId']
+
+                while q is not None:
+                    if q.date < serializer.validated_data['date']:
+                        q.date = serializer.validated_data['date']
+                        q.save()
+                    else:
+                        break
+                    q = q.parentId
+
+            serializer.save()
+
+
 
         else:
-            raise NotImplementedError("unknnow item type")
-
-    for _model, serializer in categories:
-        import_handler(_model, serializer)
-
-    for _model, serializer in products:
-        import_handler(_model, serializer)
+            return JsonResponse(
+                {
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Validation Failed"
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     return HttpResponse(status=200)
 
@@ -76,23 +77,19 @@ def delete_view(request, id):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    instance = Category.objects.filter(id=id)
-    if instance:
-        instance[0].delete()
-        return HttpResponse(status=200)
+    try:
+        instance = ItemModel.objects.get(pk=id)
+    except ItemModel.DoesNotExist:
+        return JsonResponse(
+            {
+                "code": status.HTTP_404_NOT_FOUND,
+                "message": "Item not found"
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
 
-    instance = ProductItem.objects.filter(id=id)
-    if instance:
-        instance[0].delete()
-        return HttpResponse(status=200)
-
-    return JsonResponse(
-        {
-            "code": status.HTTP_404_NOT_FOUND,
-            "message": "Item not found"
-        },
-        status=status.HTTP_404_NOT_FOUND
-    )
+    instance.delete()
+    return HttpResponse(status=200)
 
 
 @query_debugger
@@ -113,70 +110,66 @@ def nodes_view(request, id):
     output = dict()
 
     try:
-        head = Category.objects.all().get(pk=id)
-        serializer = CategorySerializer(head)
-        output['type'] = "CATEGORY"
+        head = ItemModel.objects.all().get(pk=id)
+        serializer = ItemSerializer(head)
         output['children'] = []
 
-    except Category.DoesNotExist:
-        try:
-            head = ProductItem.objects.all().get(pk=id)
-            serializer = ProductSerializer(head)
-            output['type'] = "OFFER"
-
-        except ProductItem.DoesNotExist:
-            return JsonResponse(
-                {
-                    "code": status.HTTP_404_NOT_FOUND,
-                    "message": "Item not found"
-                },
-                status=status.HTTP_404_NOT_FOUND
-            )
+    except ItemModel.DoesNotExist:
+        return JsonResponse(
+            {
+                "code": status.HTTP_404_NOT_FOUND,
+                "message": "Item not found"
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
 
     output.update(serializer.data)
     price, count = recurse(output)
     output['price'] = price // count if count != 0 else None
-
+    output['date'] = output['date'].replace('Z', ".000Z")
+    head.price = price // count if count != 0 else None
+    head.save()
 
     return JsonResponse(output, status=200)
 
 
 def recurse(output):
     id = output['id']
+
     item_count = 0
     price_count = 0
 
-    for item in ProductItem.objects.all().filter(parentId=id):
-        tmp = {
-            "type": "OFFER",
-            "children": None
-        }
+    for item in ItemModel.objects.all().filter(parentId=id):
 
-        serializer = ProductSerializer(item)
+        serializer = ItemSerializer(item)
+        tmp = dict()
         tmp.update(serializer.data)
+        tmp['date'] = tmp['date'].replace('Z', ".000Z")
+
+        if item.type == "OFFER":
+            tmp.update({"children": None})
+
+            price_count += serializer.data['price']
+            item_count += 1
+
+        elif item.type == "CATEGORY":
+            tmp.update({"children": []})
+            tmp_price, tmp_count = recurse(tmp)
+
+            price_count += tmp_price
+            item_count += tmp_count
+
+            price = tmp_price // tmp_count if item_count != 0 else None
+            item.price = price
+            tmp['price'] = price
+
+            item.save()
+
+
+
+        else:
+            return
+
         output['children'].append(tmp)
-
-        price_count += serializer.data['price']
-        item_count += 1
-
-    for item in Category.objects.all().filter(parentId=id):
-        tmp = {
-            "type": "CATEGORY",
-            "children": []
-        }
-        serializer = CategorySerializer(item)
-        tmp.update(serializer.data)
-        output['children'].append(tmp)
-        tmp_price, tmp_count = recurse(tmp)
-
-        price = tmp_price // tmp_count if item_count != 0 else None
-        item.price = price
-        tmp['price'] = price
-
-        item.save()
-
-        price_count += tmp_price
-        item_count += tmp_count
 
     return price_count, item_count
-

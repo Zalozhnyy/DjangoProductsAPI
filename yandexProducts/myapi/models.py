@@ -18,11 +18,12 @@ class ItemTypes(Enum):
             raise NotImplementedError
 
 
-class Category(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, null=False)
+class ItemModel(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=True, null=False)
     name = models.CharField(max_length=255, null=False)
     date = models.DateTimeField()
     price = models.IntegerField(null=True)
+    type = models.CharField(null=False, max_length=20)
 
     parentId = models.ForeignKey('self', on_delete=models.CASCADE, null=True)
 
@@ -30,15 +31,8 @@ class Category(models.Model):
         return str(self.id)
 
 
-class ProductItem(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, null=False)
-    name = models.CharField(max_length=255, null=False)
-    price = models.IntegerField(null=True)
-    date = models.DateTimeField()
+class PriceHistory(models.Model):
+    itemId = models.ForeignKey(ItemModel, on_delete=models.CASCADE, null=False)
+    price = models.IntegerField(null=False)
+    price_date_stamp = models.DateTimeField(null=False)
 
-    parentId = models.ForeignKey(Category, on_delete=models.CASCADE, null=False)
-
-
-class RecursiveModel(models.Model):
-    name = models.CharField(max_length=255)
-    parent = models.ForeignKey('self', null=True, on_delete=models.CASCADE)
