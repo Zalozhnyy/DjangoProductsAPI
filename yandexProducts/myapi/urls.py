@@ -8,4 +8,6 @@ urlpatterns = [
     path('imports', views.import_view),
     path('delete/<str:id>', views.delete_view),
     path('nodes/<str:id>', views.nodes_view),
+    path('sales', views.sales_view),
+    path('node/<str:id>/statistic', views.node_statistic_view),
 ]

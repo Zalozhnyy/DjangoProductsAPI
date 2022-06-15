@@ -1,3 +1,5 @@
+import datetime
+
 from django.db import models
 
 import uuid
@@ -32,7 +34,10 @@ class ItemModel(models.Model):
 
 
 class PriceHistory(models.Model):
-    itemId = models.ForeignKey(ItemModel, on_delete=models.CASCADE, null=False)
-    price = models.IntegerField(null=False)
+    itemId = models.ForeignKey(ItemModel, on_delete=models.CASCADE, null=False, db_index=True)
+    price = models.IntegerField(null=True)
     price_date_stamp = models.DateTimeField(null=False)
+
+    class Meta:
+        unique_together = [['itemId', 'price', 'price_date_stamp']]
 
