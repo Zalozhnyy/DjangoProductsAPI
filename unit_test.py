@@ -8,6 +8,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from yandexProducts.importGenerator import Generator as DataGenerator
+import time
+import asyncio
+import aiohttp
+
 API_BASEURL = "http://localhost:8000"
 
 ROOT_ID = "069cb8d7-bbdd-47d3-ad8f-82ef4c269df1"
@@ -36,30 +41,44 @@ CUSTOM_BATCH = [
             {
                 "type": "CATEGORY",
                 "name": 'Layer0',
-                "id": "73bc3b36-02d1-4245-ab35-3106c9ee1c65",
+                "id": "73bc3b36-02d1-4245-ab35-3106c9ee1c00",
                 "parentId": None,
 
             },
             {
                 "type": "CATEGORY",
                 "name": 'Layer1',
-                "id": "73bc3b36-02d1-4245-ab35-3106c9ee1c66",
-                "parentId": "73bc3b36-02d1-4245-ab35-3106c9ee1c65",
+                "id": "73bc3b36-02d1-4245-ab35-3106c9ee1c10",
+                "parentId": "73bc3b36-02d1-4245-ab35-3106c9ee1c00",
 
             },
             {
                 "type": "OFFER",
                 "name": "ITEM1",
-                "id": "73bc3b36-02d1-4245-ab35-3106c9ee1c67",
-                "parentId": "73bc3b36-02d1-4245-ab35-3106c9ee1c66",
+                "id": "73bc3b36-02d1-4245-ab35-3106c9ee1c20",
+                "parentId": "73bc3b36-02d1-4245-ab35-3106c9ee1c10",
                 "price": 100
             },
             {
                 "type": "OFFER",
                 "name": "ITEM2",
-                "id": "73bc3b36-02d1-4245-ab35-3106c9ee1c68",
-                "parentId": "73bc3b36-02d1-4245-ab35-3106c9ee1c66",
+                "id": "73bc3b36-02d1-4245-ab35-3106c9ee1c21",
+                "parentId": "773bc3b36-02d1-4245-ab35-3106c9ee1c10",
                 "price": 200
+            },
+            {
+                "type": "CATEGORY",
+                "name": 'Layer1',
+                "id": "73bc3b36-02d1-4245-ab35-3106c9ee1c11",
+                "parentId": "73bc3b36-02d1-4245-ab35-3106c9ee1c00",
+
+            },
+            {
+                "type": "OFFER",
+                "name": "ITEM2",
+                "id": "73bc3b36-02d1-4245-ab35-3106c9ee1c22",
+                "parentId": "73bc3b36-02d1-4245-ab35-3106c9ee1c11",
+                "price": 300
             },
 
         ],
@@ -247,6 +266,25 @@ def request(path, method="GET", data=None, json_response=False):
         return (e.getcode(), None)
 
 
+async def req(path, method="GET", data=None, json_response=False):
+    params = {
+        "url": f"{API_BASEURL}{path}",
+        "method": method,
+        "headers": {},
+    }
+
+    if data:
+        params["data"] = json.dumps(
+            data, ensure_ascii=False).encode("utf-8")
+        params["headers"]["Content-Length"] = len(params["data"])
+        params["headers"]["Content-Type"] = "application/json"
+
+    async with aiohttp.ClientSession(API_BASEURL) as session:
+        if params['method'] == "POST":
+            async with session.post(path, json=data) as resp:
+                return resp.status, "s"
+
+
 def deep_sort_children(node):
     if node.get("children"):
         node["children"].sort(key=lambda x: x["id"])
@@ -277,6 +315,7 @@ def test_import():
         assert status == 200, f"Expected HTTP status code 200, got {status}"
 
     print("Test import passed.")
+
 
 def test_update():
     for index, batch in enumerate(UPDATE_BATCH):
@@ -400,14 +439,45 @@ def test_all():
     test_delete()
 
 
+def test_stress():
+    async def task(task_id, data):
+        requests_count = 0
+        tic_avg = time.perf_counter()
+
+        for index, batch in enumerate(data):
+            status, _ = await req("/imports", method="POST", data=batch)
+            requests_count += 1
+
+            assert status == 200, f"Expected HTTP status code 200, got {status}"
+        toc_avg = time.perf_counter()
+        return f'{task_id} BATCH SIZE: {len(data[0]["items"])} TASK DONE IN: {(toc_avg - tic_avg):.2f}  {len(data[0]["items"]) / (toc_avg - tic_avg):.2f} rps'
+
+    async def asynchronous():
+        tasks = 30
+        data = [DataGenerator().generate() for _ in range(tasks)]
+        futures = [task(i, data[i]) for i in range(tasks)]
+        t = time.perf_counter()
+        for i, future in enumerate(asyncio.as_completed(futures)):
+            result = await future
+            print(result)
+
+        print(f'{10 * 100 / (time.perf_counter() - t)}:.2f rps')
+
+    ioloop = asyncio.get_event_loop()
+    ioloop.run_until_complete(asynchronous())
+    ioloop.close()
+
+
 def main():
     global API_BASEURL
     test_name = [
+
+        # 'stress',
         # "update",
         "import",
-        # 'nodes',
+        'nodes',
         # 'sales',
-        "stats",
+        # "stats",
         # 'delete',
     ]
 

@@ -1,17 +1,23 @@
 import datetime
+import time
 import uuid
+from itertools import chain
+from collections import defaultdict
+from typing import Union
 
+from django.db.models import Sum, Avg, Count, QuerySet
 from django.views.decorators.http import require_http_methods
 
 from django.http import JsonResponse, HttpResponse
 from rest_framework.parsers import JSONParser
 from django.views.decorators.csrf import csrf_exempt
+from rest_framework.generics import ListCreateAPIView
 
 from rest_framework import status, exceptions
 
-from .serializers import ItemSerializer, PriceHistorySerializer
+from .serializers import ItemSerializer, PriceHistorySerializer, ItemChildrenSerializer, get_head, save_history
 from .models import ItemModel, PriceHistory
-from .utility import get_head_of_three, calc_category_price, save_history, query_debugger
+from .utility import *
 
 bad_request = lambda: JsonResponse({"code": status.HTTP_400_BAD_REQUEST, "message": "Validation Failed"},
                                    status=status.HTTP_400_BAD_REQUEST)
@@ -21,95 +27,117 @@ item_not_found = lambda: JsonResponse({"code": status.HTTP_404_NOT_FOUND, "messa
                                       )
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
-def import_view(request):
-    input_data = JSONParser().parse(request)
+def calculate_category_prices(children: Union[QuerySet, List[ItemModel]]):
 
-    items = input_data['items']
-    items = sorted(items, key=lambda x: x['type'])
-    changed_categories = set()
+    calculated = set()
+    for child in children:
+        if not child.parentId or child.parentId in calculated:
+            continue
+        parent = child.parentId
+        all_children = ItemModel.objects.filter(parentId=child.parentId).aggregate(
+            price=Sum("price_info__items_price_count"),
+            count=Sum("price_info__category_items_count"),
+        )
+        parent.price_info.items_price_count = all_children['price']
+        parent.price_info.category_items_count = all_children['count']
+        parent.price = parent.price_info.items_price_count // parent.price_info.category_items_count
+        parent.price_info.save()
+        parent.save()
 
-    for item in items:
-        item['date'] = input_data['updateDate']
+        calculated.add(parent)
 
-        if item['type'] == "CATEGORY":
-            item['price'] = None
+    if calculated:
+        calculate_category_prices(list(calculated))
 
+
+
+
+    # calculate_category_prices(list(calculated))
+
+    # for parent in parents:
+    #
+    #     parent_price = CategoryPrice.objects.get(pk=parent)
+    #     print(parent_price)
+    #     child_prices = CategoryPrice.objects.filter(id_in=child_categories).aggregate(
+    #         count=Sum("category_items_count"),
+    #         price=Sum("items_price_count")
+    #     )
+
+        # price_table.category_items_count = child_prices['count']
+        # price_table.items_price_count = child_prices['price']
+        #
+        # price_table.save()
+
+
+
+
+class ItemAPIView(ListCreateAPIView):
+
+    def get(self, request, *args, **kwargs):
         try:
-            instance = ItemModel.objects.get(pk=item['id'])
-            serializer = ItemSerializer(data=item, instance=instance)
-        except ItemModel.DoesNotExist:
-            serializer = ItemSerializer(data=item)
-
-        if serializer.is_valid(raise_exception=True):
-            serializer.save()
-
-            head = get_head_of_three(ItemModel.objects.all().get(pk=serializer.validated_data['id']),
-                                     serializer.validated_data['date'])
-            calc_category_price(head, changed_categories)
-
-        else:
+            id = uuid.UUID(kwargs['id'])
+        except Exception:
             return bad_request()
 
-    for item in ItemModel.objects.all().filter(id__in=list(changed_categories)):
-        save_history(item.id, item.price, item.date)
+        try:
+            instance = ItemModel.objects.all().get(pk=id)
+            serializer = ItemChildrenSerializer(instance=instance)
+        except ItemModel.DoesNotExist:
+            return item_not_found()
 
-    return HttpResponse(status=200)
+        return JsonResponse(serializer.data, status=200)
+
+    def post(self, request, *args, **kwargs):
+        input_data = JSONParser().parse(request)
+        type_map = {"CATEGORY": [], 'OFFER': []}
+
+        for item in input_data['items']:
+            item['date'] = input_data['updateDate']
+
+            if item['type'] not in type_map.keys():
+                return bad_request()
+
+            type_map[item['type']].append(item)
+
+        for item in chain(type_map['CATEGORY'], type_map['OFFER']):
+            try:
+                import_handler(item)
+            except exceptions.ValidationError:
+                return bad_request()
+
+        calculate_category_prices(ItemModel.objects.filter(id__in=set([item['id'] for item in type_map['OFFER']])))
+
+        # for item in ItemModel.objects.filter(parentId=None):
+        #     item.delete()
+
+        return HttpResponse(status=200)
 
 
-@csrf_exempt
-@require_http_methods(["DELETE"])
-def delete_view(request, id):
-    try:
-        id = uuid.UUID(id)
-    except Exception:
-        return bad_request()
-
-    try:
-        instance = ItemModel.objects.get(pk=id)
-
-        head = get_head_of_three(instance, date=datetime.datetime.now(tz=datetime.timezone.utc))
-
-        instance.delete()
-
-        changed_categories = set()
-        calc_category_price(head, changed_categories)
-        for item in ItemModel.objects.all().filter(id__in=list(changed_categories)):
-            save_history(item.id, item.price, item.date)
-
-
-    except ItemModel.DoesNotExist:
-        return item_not_found()
-
-    return HttpResponse(status=200)
-
-
-@csrf_exempt
-@require_http_methods(["GET"])
-def nodes_view(request, id):
-    try:
-        id = uuid.UUID(id)
-    except Exception:
-        return bad_request()
-
-    output = dict()
-
-    try:
-        head = ItemModel.objects.all().get(pk=id)
-        serializer = ItemSerializer(head)
-        output['children'] = []
-
-    except ItemModel.DoesNotExist:
-        return item_not_found()
-
-    output.update(serializer.data)
-    price, count = recurse(output)
-    output['price'] = price // count if count != 0 else None
-    output['date'] = output['date'].replace('Z', ".000Z")
-    head.price = price // count if count != 0 else None
-
-    return JsonResponse(output, status=200)
+# @csrf_exempt
+# @require_http_methods(["DELETE"])
+# def delete_view(request, id):
+#     try:
+#         id = uuid.UUID(id)
+#     except Exception:
+#         return bad_request()
+#
+#     try:
+#         instance = ItemModel.objects.get(pk=id)
+#
+#         head = get_head(instance, date=datetime.datetime.now(tz=datetime.timezone.utc))
+#
+#         instance.delete()
+#
+#         changed_categories = set()
+#         calc_category_price(head, changed_categories)
+#         for item in ItemModel.objects.all().filter(id__in=list(changed_categories)):
+#             save_history(item.id, item.price, item.date)
+#
+#
+#     except ItemModel.DoesNotExist:
+#         return item_not_found()
+#
+#     return HttpResponse(status=200)
 
 
 def sales_view(request):
@@ -153,40 +181,3 @@ def node_statistic_view(request, id):
     print(*serializer.data, sep='\n')
 
     return JsonResponse({'items': serializer.data}, status=200)
-
-
-def recurse(output):
-    id = output['id']
-
-    item_count = 0
-    price_count = 0
-
-    for item in ItemModel.objects.all().filter(parentId=id):
-
-        serializer = ItemSerializer(item)
-        tmp = dict()
-        tmp.update(serializer.data)
-        tmp['date'] = tmp['date'].replace('Z', ".000Z")
-
-        if item.type == "OFFER":
-            tmp.update({"children": None})
-
-            price_count += serializer.data['price']
-            item_count += 1
-
-        elif item.type == "CATEGORY":
-            tmp.update({"children": []})
-            tmp_price, tmp_count = recurse(tmp)
-
-            price_count += tmp_price
-            item_count += tmp_count
-
-            price = tmp_price // tmp_count if item_count != 0 else None
-            tmp['price'] = price
-
-        else:
-            return
-
-        output['children'].append(tmp)
-
-    return price_count, item_count
