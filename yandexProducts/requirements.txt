@@ -1,0 +1,20 @@
+aiohttp @ file:///tmp/build/80754af9/aiohttp_1646788240124/work
+aiosignal @ file:///tmp/build/80754af9/aiosignal_1637843061372/work
+asgiref==3.5.2
+async-timeout @ file:///tmp/build/80754af9/async-timeout_1637851218186/work
+asynctest==0.13.0
+attrs @ file:///opt/conda/conda-bld/attrs_1642510447205/work
+certifi==2022.5.18.1
+charset-normalizer @ file:///tmp/build/80754af9/charset-normalizer_1630003229654/work
+Django==3.2.13
+django-debug-toolbar==3.4.0
+djangorestframework==3.13.1
+djangorestframework-recursive==0.1.2
+frozenlist @ file:///tmp/build/80754af9/frozenlist_1637767116045/work
+idna @ file:///tmp/build/80754af9/idna_1637925883363/work
+multidict @ file:///opt/conda/conda-bld/multidict_1640703752579/work
+psycopg2==2.9.3
+pytz==2022.1
+sqlparse==0.4.2
+typing_extensions==4.2.0
+yarl @ file:///tmp/build/80754af9/yarl_1606939952652/work
