@@ -308,7 +308,7 @@ def print_diff(expected, response):
 
 def test_import():
     for index, batch in enumerate(IMPORT_BATCHES):
-    # for index, batch in enumerate(CUSTOM_BATCH):
+        # for index, batch in enumerate(CUSTOM_BATCH):
         print(f"Importing batch {index}")
         status, _ = request("/imports", method="POST", data=batch)
 
@@ -353,66 +353,9 @@ def test_sales():
 
 
 def test_stats():
-    update_batch = [
-        {
-            "items": [
-                {
-                    "type": "OFFER",
-                    "name": "Goldstar 65\" LED UHD LOL Very Smart",
-                    "id": "73bc3b36-02d1-4245-ab35-3106c9ee1c65",
-                    "parentId": "1cc0129a-2bfe-474c-9ee6-d435bf5fc8f2",
-                    "price": 100000
-                }
-            ],
-            "updateDate": "2022-02-01T00:00:00.000Z"
-        }
-    ]
-    update_batch_2 = [
-        {
-            "items": [
-                {
-                    "type": "OFFER",
-                    "name": "Samson 70\" LED UHD Smart",
-                    "id": "98883e8f-0507-482f-bce2-2fb306cf6483",
-                    "parentId": "1cc0129a-2bfe-474c-9ee6-d435bf5fc8f2",
-                    "price": 100001
-                },
-
-            ],
-            "updateDate": "2022-02-03T00:00:00.000Z"
-        }
-    ]
-
-    update_batch_3 = [
-        {
-            "items": [
-                {
-                    "type": "OFFER",
-                    "name": "Phyllis 50\" LED UHD Smarter",
-                    "id": "74b81fda-9cdc-4b63-8927-c978afed5cf4",
-                    "parentId": "1cc0129a-2bfe-474c-9ee6-d435bf5fc8f2",
-                    "price": 100002
-                },
-
-            ],
-            "updateDate": "2022-02-12T00:00:00.000Z"
-        }
-    ]
-
-    for index, batch in enumerate(update_batch):
-        status, _ = request("/imports", method="POST", data=batch)
-        assert status == 200, f"Expected HTTP status code 200, got {status}"
-
-    for index, batch in enumerate(update_batch_2):
-        status, _ = request("/imports", method="POST", data=batch)
-        assert status == 200, f"Expected HTTP status code 200, got {status}"
-    for index, batch in enumerate(update_batch_3):
-        status, _ = request("/imports", method="POST", data=batch)
-        assert status == 200, f"Expected HTTP status code 200, got {status}"
-
     params = urllib.parse.urlencode({
         "dateStart": "2022-02-01T00:00:00.000Z",
-        "dateEnd": "2022-02-04T00:00:00.000Z"
+        "dateEnd": "2022-02-03T00:00:00.000Z"
     })
     status, response = request(
         f"/node/{ROOT_ID}/statistic?{params}", json_response=True)
@@ -474,11 +417,12 @@ def main():
 
         # 'stress',
         # "update",
-        "import",
-        'nodes',
+        # "import",
+        # 'nodes',
         # 'sales',
         # "stats",
         # 'delete',
+        'all'
     ]
 
     for arg in sys.argv[1:]:

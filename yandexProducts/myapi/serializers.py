@@ -3,18 +3,6 @@ from rest_framework import serializers, relations
 from .models import ItemModel, PriceHistory
 
 
-def get_head(validated_data: dict, update_data: bool):
-    head: ItemModel = ItemModel.objects.get(pk=validated_data['id'])
-
-    while head.parentId is not None:
-        head = head.parentId
-        if update_data and head.date != validated_data['date']:
-            head.date = validated_data['date']
-            head.save()
-
-    return head
-
-
 def save_history(id, price, date):
     s = PriceHistorySerializer(
         data={"itemId": id, "price": price, "price_date_stamp": date})
@@ -80,6 +68,22 @@ class PriceHistorySerializer(serializers.ModelSerializer):
             queryset=model.objects.all(),
             fields=('itemId', 'price', 'price_date_stamp'),
         )
+
+    def to_representation(self, instance: PriceHistory):
+        a = super().to_representation(instance)
+        d = {
+            "id": str(instance.itemId),
+            "name": instance.itemId.name,
+            "date": a['price_date_stamp'].replace('Z', '.000Z'),
+            "parentId": str(instance.itemId.parentId),
+            "price": instance.price,
+            "type": instance.itemId.type
+        }
+        return d
+    #
+    # def to_internal_value(self, data):
+    #     a = super(PriceHistorySerializer, self).to_internal_value(data)
+    #     return a
 
 
 class ChildrenSerializer(serializers.ModelSerializer):

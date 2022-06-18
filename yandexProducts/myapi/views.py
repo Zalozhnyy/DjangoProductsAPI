@@ -1,21 +1,17 @@
 import datetime
-import time
 import uuid
 from itertools import chain
-from collections import defaultdict
 from typing import Union
 
-from django.db.models import Sum, Avg, Count, QuerySet
-from django.views.decorators.http import require_http_methods
+from django.db.models import Sum, Avg, Count, QuerySet, Max
 
 from django.http import JsonResponse, HttpResponse
 from rest_framework.parsers import JSONParser
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework.generics import ListCreateAPIView
+from rest_framework.generics import ListCreateAPIView, DestroyAPIView, ListAPIView
 
 from rest_framework import status, exceptions
 
-from .serializers import ItemSerializer, PriceHistorySerializer, ItemChildrenSerializer, get_head, save_history
+from .serializers import PriceHistorySerializer, ItemChildrenSerializer, save_history
 from .models import ItemModel, PriceHistory
 from .utility import *
 
@@ -28,21 +24,27 @@ item_not_found = lambda: JsonResponse({"code": status.HTTP_404_NOT_FOUND, "messa
 
 
 def calculate_category_prices(children: Union[QuerySet, List[ItemModel]]):
-
     calculated = set()
     for child in children:
         if not child.parentId or child.parentId in calculated:
             continue
+
         parent = child.parentId
+
         all_children = ItemModel.objects.filter(parentId=child.parentId).aggregate(
             price=Sum("price_info__items_price_count"),
             count=Sum("price_info__category_items_count"),
+            date=Max("date")
         )
         parent.price_info.items_price_count = all_children['price']
         parent.price_info.category_items_count = all_children['count']
         parent.price = parent.price_info.items_price_count // parent.price_info.category_items_count
         parent.price_info.save()
+
+        parent.date = all_children['date']
         parent.save()
+
+        save_history(parent.id, parent.price, parent.date)
 
         calculated.add(parent)
 
@@ -50,25 +52,23 @@ def calculate_category_prices(children: Union[QuerySet, List[ItemModel]]):
         calculate_category_prices(list(calculated))
 
 
+def decrement_deleted_item(instance: ItemModel):
+    count = instance.price_info.category_items_count
+    price = instance.price_info.items_price_count
+    date = datetime.datetime.now()
 
+    while instance.parentId:
+        instance = instance.parentId
 
-    # calculate_category_prices(list(calculated))
+        instance.price_info.category_items_count -= count
+        instance.price_info.items_price_count -= price
+        instance.price_info.save()
 
-    # for parent in parents:
-    #
-    #     parent_price = CategoryPrice.objects.get(pk=parent)
-    #     print(parent_price)
-    #     child_prices = CategoryPrice.objects.filter(id_in=child_categories).aggregate(
-    #         count=Sum("category_items_count"),
-    #         price=Sum("items_price_count")
-    #     )
+        instance.price = instance.price_info.items_price_count // instance.price_info.category_items_count
 
-        # price_table.category_items_count = child_prices['count']
-        # price_table.items_price_count = child_prices['price']
-        #
-        # price_table.save()
-
-
+        instance.date = date
+        instance.save()
+        save_history(instance.id, instance.price, instance.date)
 
 
 class ItemAPIView(ListCreateAPIView):
@@ -107,77 +107,76 @@ class ItemAPIView(ListCreateAPIView):
 
         calculate_category_prices(ItemModel.objects.filter(id__in=set([item['id'] for item in type_map['OFFER']])))
 
-        # for item in ItemModel.objects.filter(parentId=None):
-        #     item.delete()
+        return HttpResponse(status=200)
+
+
+class ItemDeleteAPIView(DestroyAPIView):
+
+    def delete(self, request, *args, **kwargs):
+        try:
+            id = uuid.UUID(kwargs['id'])
+        except Exception:
+            return bad_request()
+
+        try:
+            instance = ItemModel.objects.get(pk=id)
+
+            if instance.parentId:
+                decrement_deleted_item(instance)
+
+            instance.delete()
+
+        except ItemModel.DoesNotExist:
+            return item_not_found()
 
         return HttpResponse(status=200)
 
 
-# @csrf_exempt
-# @require_http_methods(["DELETE"])
-# def delete_view(request, id):
-#     try:
-#         id = uuid.UUID(id)
-#     except Exception:
-#         return bad_request()
-#
-#     try:
-#         instance = ItemModel.objects.get(pk=id)
-#
-#         head = get_head(instance, date=datetime.datetime.now(tz=datetime.timezone.utc))
-#
-#         instance.delete()
-#
-#         changed_categories = set()
-#         calc_category_price(head, changed_categories)
-#         for item in ItemModel.objects.all().filter(id__in=list(changed_categories)):
-#             save_history(item.id, item.price, item.date)
-#
-#
-#     except ItemModel.DoesNotExist:
-#         return item_not_found()
-#
-#     return HttpResponse(status=200)
+class ItemSalesView(ListAPIView):
+    allowed_methods = ['GET']
+
+    def get(self, request, *args, **kwargs):
+        date = request.query_params.get('date', None)
+        if not date:
+            return bad_request()
+
+        try:
+            date = datetime.datetime.fromisoformat(date[:-1]).astimezone(datetime.timezone.utc)
+        except Exception as e:
+            return bad_request()
+
+        day_before = date - datetime.timedelta(days=1)
+
+        q = ItemModel.objects.all().filter(type="OFFER", date__lt=date, date__gte=day_before)
+
+        s = ItemSerializer(instance=q, many=True)
+
+        return JsonResponse({'items': s.data}, status=200)
 
 
-def sales_view(request):
-    date = request.GET.get('date', None)
-    if not date:
-        return bad_request()
+class ItemStatisticView(ListAPIView):
+    allowed_methods = ['GET']
 
-    try:
-        date = datetime.datetime.fromisoformat(date[:-1]).astimezone(datetime.timezone.utc)
-    except Exception as e:
-        print(e)
-        return bad_request()
+    def get(self, request, *args, **kwargs):
 
-    day_before = date - datetime.timedelta(days=1)
+        try:
+            id = uuid.UUID(kwargs['id'])
 
-    q = ItemModel.objects.all().filter(date__lt=date, date__gte=day_before)
+            dateStart = request.query_params.get('dateStart', None)
+            dateEnd = request.query_params.get('dateEnd', None)
 
-    s = ItemSerializer(q, many=True)
+            dateStart = datetime.datetime.fromisoformat(dateStart[:-1]).astimezone(datetime.timezone.utc)
+            dateEnd = datetime.datetime.fromisoformat(dateEnd[:-1]).astimezone(datetime.timezone.utc)
 
-    return JsonResponse({'items': s.data}, status=200)
+            if dateEnd < dateStart:
+                raise Exception
+
+        except Exception:
+            return bad_request()
+
+        q = PriceHistory.objects.all().filter(itemId=id, price_date_stamp__lt=dateEnd, price_date_stamp__gte=dateStart)
+        serializer = PriceHistorySerializer(q, many=True)
+
+        return JsonResponse({'items': serializer.data}, status=200)
 
 
-def node_statistic_view(request, id):
-    try:
-        id = uuid.UUID(id)
-
-        dateStart = request.GET.get('dateStart', None)
-        dateEnd = request.GET.get('dateEnd', None)
-
-        dateStart = datetime.datetime.fromisoformat(dateStart[:-1]).astimezone(datetime.timezone.utc)
-        dateEnd = datetime.datetime.fromisoformat(dateEnd[:-1]).astimezone(datetime.timezone.utc)
-
-        if dateEnd < dateStart:
-            raise Exception
-
-    except Exception:
-        return bad_request()
-
-    q = PriceHistory.objects.all().filter(price_date_stamp__lt=dateEnd, price_date_stamp__gte=dateStart)
-    serializer = PriceHistorySerializer(q, many=True)
-    print(*serializer.data, sep='\n')
-
-    return JsonResponse({'items': serializer.data}, status=200)

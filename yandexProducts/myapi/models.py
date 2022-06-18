@@ -1,6 +1,8 @@
 import datetime
 
 from django.db import models
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 
 import uuid
 from enum import Enum
@@ -8,6 +10,7 @@ from enum import Enum
 
 def get_default_price_model():
     return PriceCalculation.objects.create()
+
 
 class ItemTypes(Enum):
     OFFER = 1
@@ -31,7 +34,7 @@ class PriceCalculation(models.Model):
 class ItemModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=True, null=False)
     name = models.CharField(max_length=255, null=False)
-    date = models.DateTimeField()
+    date = models.DateTimeField(db_index=True)
     price = models.IntegerField(null=True)
     type = models.CharField(null=False, max_length=20)
 
@@ -50,10 +53,15 @@ class ItemModel(models.Model):
         return str(self.id)
 
 
+@receiver(post_delete, sender=ItemModel)
+def auto_delete_publish_info_with_book(sender, instance, **kwargs):
+    instance.price_info.delete()
+
+
 class PriceHistory(models.Model):
     itemId = models.ForeignKey(ItemModel, on_delete=models.CASCADE, null=False, db_index=True)
     price = models.IntegerField(null=True)
-    price_date_stamp = models.DateTimeField(null=False)
+    price_date_stamp = models.DateTimeField(null=False, db_index=True)
 
     class Meta:
-        unique_together = [['itemId', 'price', 'price_date_stamp']]
+        unique_together = [['itemId', 'price_date_stamp']]
