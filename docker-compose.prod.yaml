@@ -5,7 +5,7 @@ services:
     build:
       context: ./yandexProducts
       dockerfile: Dockerfile.prod
-    command: gunicorn yandexProducts.wsgi:application --bind 0.0.0.0:8000 --workers 3 --access-logfile ~/DjangoProductsAPI/gunicorn.log --error-logfile ~/DjangoProductsAPI/gunicorn_error.log
+    command: gunicorn yandexProducts.wsgi:application --bind 0.0.0.0:8000 --workers 3 --access-logfile gunicorn.log --error-logfile gunicorn_error.log
     restart: always
     expose:
       - 8000

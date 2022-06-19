@@ -21,9 +21,7 @@ def query_debugger(func):
 
         end_queries = len(connection.queries)
 
-        print(f"Function : {func.__name__}")
-        print(f"Number of Queries : {end_queries - start_queries}")
-        print(f"Finished in : {int((end - start) * 1e3):d} ms")
+        print(f"Function : {func.__name__} queries: {end_queries - start_queries}  {int((end - start) * 1e3):d} ms")
         return result
 
     return inner_func

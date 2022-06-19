@@ -73,6 +73,7 @@ def decrement_deleted_item(instance: ItemModel):
 
 class ItemAPIView(ListCreateAPIView):
 
+    @query_debugger
     def get(self, request, *args, **kwargs):
         try:
             id = uuid.UUID(kwargs['id'])
