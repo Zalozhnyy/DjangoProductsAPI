@@ -49,6 +49,9 @@ class Generator:
         self._category_ids.append(d['id'])
         return d
 
+    def get_category_ids(self):
+        return self._category_ids
+
     def generate(self):
         for i in range(self._items_count):
             d = {

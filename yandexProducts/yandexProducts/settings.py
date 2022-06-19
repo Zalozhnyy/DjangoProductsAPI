@@ -28,7 +28,6 @@ DEBUG = int(os.environ.get("DEBUG", default=0))
 
 
 
-# ALLOWED_HOSTS = ['127.0.0.1', '10.21.0.108']
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS").split(" ")
 
 # Application definition
