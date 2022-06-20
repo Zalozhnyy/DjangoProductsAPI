@@ -27,32 +27,6 @@ def query_debugger(func):
     return inner_func
 
 
-# def calc_category_price(head: ItemModel, updated_items: Set) -> (int, int):
-#     item_count = 0
-#     price_count = 0
-#
-#     if head is None:
-#         return
-#
-#     for q in ItemModel.objects.filter(parentId=head.id):
-#
-#         if q.type == "CATEGORY":
-#             tmp_price, tmp_count = calc_category_price(q, updated_items)
-#
-#             price_count += tmp_price
-#             item_count += tmp_count
-#
-#         elif q.type == "OFFER":
-#             price_count += q.price
-#             item_count += 1
-#
-#     head.price = price_count // item_count if item_count != 0 else None
-#     head.save()
-#     updated_items.add(head.id)
-#
-#     return price_count, item_count
-#
-
 def import_handler(item: dict):
     try:
         instance = ItemModel.objects.get(pk=item['id'])

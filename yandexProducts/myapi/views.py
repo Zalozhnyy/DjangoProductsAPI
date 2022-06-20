@@ -64,7 +64,11 @@ def decrement_deleted_item(instance: ItemModel):
         instance.price_info.items_price_count -= price
         instance.price_info.save()
 
-        instance.price = instance.price_info.items_price_count // instance.price_info.category_items_count
+        if instance.price_info.category_items_count > 0:
+            new_price = instance.price_info.items_price_count // instance.price_info.category_items_count
+        else:
+            new_price = None
+        instance.price = new_price
 
         instance.date = date
         instance.save()
@@ -73,7 +77,6 @@ def decrement_deleted_item(instance: ItemModel):
 
 class ItemAPIView(ListCreateAPIView):
 
-    @query_debugger
     def get(self, request, *args, **kwargs):
         try:
             id = uuid.UUID(kwargs['id'])
@@ -166,18 +169,24 @@ class ItemStatisticView(ListAPIView):
             dateStart = request.query_params.get('dateStart', None)
             dateEnd = request.query_params.get('dateEnd', None)
 
+        except Exception:
+            return bad_request()
+
+        if dateStart is None and dateEnd is None:
+            q = PriceHistory.objects.all().filter(itemId=id)
+
+        elif dateStart and dateEnd:
             dateStart = datetime.datetime.fromisoformat(dateStart[:-1]).astimezone(datetime.timezone.utc)
             dateEnd = datetime.datetime.fromisoformat(dateEnd[:-1]).astimezone(datetime.timezone.utc)
 
             if dateEnd < dateStart:
                 raise Exception
 
-        except Exception:
+            q = PriceHistory.objects.all().filter(itemId=id, price_date_stamp__lt=dateEnd, price_date_stamp__gte=dateStart)
+
+        else:
             return bad_request()
 
-        q = PriceHistory.objects.all().filter(itemId=id, price_date_stamp__lt=dateEnd, price_date_stamp__gte=dateStart)
         serializer = PriceHistorySerializer(q, many=True)
 
         return JsonResponse({'items': serializer.data}, status=200)
-
-
