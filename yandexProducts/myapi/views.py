@@ -151,7 +151,7 @@ class ItemSalesView(ListAPIView):
 
         day_before = date - datetime.timedelta(days=1)
 
-        q = ItemModel.objects.all().filter(type="OFFER", date__lt=date, date__gte=day_before)
+        q = ItemModel.objects.all().filter(type="OFFER", date__lte=date, date__gte=day_before)
 
         s = ItemSerializer(instance=q, many=True)
 
