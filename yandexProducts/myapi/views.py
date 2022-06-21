@@ -7,7 +7,7 @@ from django.db.models import Sum, Avg, Count, QuerySet, Max
 
 from django.http import JsonResponse, HttpResponse
 from rest_framework.parsers import JSONParser
-from rest_framework.generics import ListCreateAPIView, DestroyAPIView, ListAPIView
+from rest_framework.generics import CreateAPIView, DestroyAPIView, ListAPIView
 
 from rest_framework import status, exceptions
 
@@ -23,9 +23,13 @@ item_not_found = lambda: JsonResponse({"code": status.HTTP_404_NOT_FOUND, "messa
                                       )
 
 
-class ItemAPIView(ListCreateAPIView):
+class ItemAPIView(CreateAPIView):
+    allowed_methods = ['GET', 'POST']
 
     def get(self, request, *args, **kwargs):
+        """
+        Возвращает категорию/товар по uuid со всеми дочерними элементами
+        """
         try:
             id = uuid.UUID(kwargs['id'])
         except Exception:
@@ -130,7 +134,8 @@ class ItemStatisticView(ListAPIView):
             if dateEnd < dateStart:
                 raise Exception
 
-            q = PriceHistory.objects.all().filter(itemId=id, price_date_stamp__lt=dateEnd, price_date_stamp__gte=dateStart)
+            q = PriceHistory.objects.all().filter(itemId=id, price_date_stamp__lt=dateEnd,
+                                                  price_date_stamp__gte=dateStart)
 
         else:
             return bad_request()
