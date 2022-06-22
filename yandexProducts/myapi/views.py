@@ -11,7 +11,7 @@ from rest_framework.generics import CreateAPIView, DestroyAPIView, ListAPIView
 
 from rest_framework import status, exceptions
 
-from .serializers import PriceHistorySerializer, ItemChildrenSerializer, save_history
+from .serializers import PriceHistorySerializer, ItemChildrenSerializer
 from .models import ItemModel, PriceHistory
 from .utility import *
 
@@ -44,6 +44,7 @@ class ItemAPIView(CreateAPIView):
         return JsonResponse(serializer.data, status=200)
 
     def post(self, request, *args, **kwargs):
+
         input_data = JSONParser().parse(request)
         type_map = {"CATEGORY": [], 'OFFER': []}
 

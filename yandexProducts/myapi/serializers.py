@@ -10,13 +10,6 @@ def save_history(id, price, date):
         s.save()
 
 
-def push_date_to_parent(instance: ItemModel):
-    parent = instance.parentId
-    if parent and parent.date < instance.date:
-        parent.date = instance.date
-        parent.save()
-
-
 class ItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = ItemModel
@@ -32,8 +25,6 @@ class ItemSerializer(serializers.ModelSerializer):
             price.save()
 
             save_history(instance.id, instance.price, instance.date)
-
-        # push_date_to_parent(instance)
 
         return instance
 
@@ -80,10 +71,6 @@ class PriceHistorySerializer(serializers.ModelSerializer):
             "type": instance.itemId.type
         }
         return d
-    #
-    # def to_internal_value(self, data):
-    #     a = super(PriceHistorySerializer, self).to_internal_value(data)
-    #     return a
 
 
 class ChildrenSerializer(serializers.ModelSerializer):
