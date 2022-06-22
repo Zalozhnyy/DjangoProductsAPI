@@ -1,11 +1,11 @@
 import datetime
+import time
 import uuid
 from itertools import chain
 from typing import Union
 
-from django.db.models import Sum, Avg, Count, QuerySet, Max
-
 from django.http import JsonResponse, HttpResponse
+from django.db import transaction
 from rest_framework.parsers import JSONParser
 from rest_framework.generics import CreateAPIView, DestroyAPIView, ListAPIView
 
@@ -55,13 +55,15 @@ class ItemAPIView(CreateAPIView):
 
             type_map[item['type']].append(item)
 
-        for item in chain(type_map['CATEGORY'], type_map['OFFER']):
-            try:
-                import_handler(item)
-            except exceptions.ValidationError:
-                return bad_request()
+        with transaction.atomic():
+            for item in chain(type_map['CATEGORY'], type_map['OFFER']):
+                try:
+                    import_handler(item)
+                except exceptions.ValidationError:
+                    return bad_request()
 
-        calculate_category_prices(ItemModel.objects.filter(id__in=set([item['id'] for item in type_map['OFFER']])))
+        with transaction.atomic():
+            calculate_category_prices(ItemModel.objects.filter(id__in=set([item['id'] for item in type_map['OFFER']])))
 
         return HttpResponse(status=200)
 
@@ -80,7 +82,8 @@ class ItemDeleteAPIView(DestroyAPIView):
             if instance.parentId:
                 decrement_deleted_item(instance)
 
-            instance.delete()
+            with transaction.atomic():
+                instance.delete()
 
         except ItemModel.DoesNotExist:
             return item_not_found()
