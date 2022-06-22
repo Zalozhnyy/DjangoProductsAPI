@@ -77,15 +77,14 @@ class ItemDeleteAPIView(DestroyAPIView):
 
         try:
             instance = ItemModel.objects.get(pk=id)
-
-            if instance.parentId:
-                decrement_deleted_item(instance)
-
-            with transaction.atomic():
-                instance.delete()
-
         except ItemModel.DoesNotExist:
             return item_not_found()
+
+        if instance.parentId:
+            decrement_deleted_item(instance)
+
+        with transaction.atomic():
+            instance.delete()
 
         return HttpResponse(status=200)
 
@@ -101,7 +100,7 @@ class ItemSalesView(ListAPIView):
         try:
             date = datetime.datetime.fromisoformat(date[:-1]).astimezone(datetime.timezone.utc)
         except Exception as e:
-            return bad_request()
+            raise Exception('Invalid data format')
 
         day_before = date - datetime.timedelta(days=1)
 
@@ -134,7 +133,7 @@ class ItemStatisticView(ListAPIView):
             dateEnd = datetime.datetime.fromisoformat(dateEnd[:-1]).astimezone(datetime.timezone.utc)
 
             if dateEnd < dateStart:
-                raise Exception
+                raise bad_request()
 
             q = PriceHistory.objects.all().filter(itemId=id, price_date_stamp__lt=dateEnd,
                                                   price_date_stamp__gte=dateStart)
