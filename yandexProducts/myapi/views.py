@@ -6,6 +6,7 @@ from typing import Union
 
 from django.http import JsonResponse, HttpResponse
 from django.db import transaction
+from django.core.exceptions import ValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.generics import CreateAPIView, DestroyAPIView, ListAPIView
 
@@ -58,10 +59,7 @@ class ItemAPIView(CreateAPIView):
 
         with transaction.atomic():
             for item in chain(type_map['CATEGORY'], type_map['OFFER']):
-                try:
-                    import_handler(item)
-                except exceptions.ValidationError:
-                    return bad_request()
+                import_handler(item)
 
         with transaction.atomic():
             calculate_category_prices(ItemModel.objects.filter(id__in=set([item['id'] for item in type_map['OFFER']])))
